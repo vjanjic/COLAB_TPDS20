@@ -1,0 +1,9 @@
+\vspace{-0.1cm}
+\section{Conclusion}
+
+We presented the novel \textbf{COLAB} scheduling framework that targets multi-threaded multiprogrammed workloads on asymmetric multicore processors (AMPs) which occupy a significant part of the processor market today, especially in embedded systems. COLAB is the first general-purpose scheduler that, by making \emph{collaborative} decisions on core sensitivity, thread criticallity and scheduling fairness, optimises all these three factors that affect the AMP scheduling - core affinity, thread criticality, and scheduling fairness. %In this way, we are able to improve on the state-of-the art WASH scheduler, as well as on the Linux CFS scheduler.
+%, which consider these two decisions in isolation. 
+
+We have demonstrated on a number of different workloads comprised of benchmarks taken from the state-of-the-art parallel benchmark suites PARSEC3.0 and SPLASH-2, simulating a number of different AMP configurations using the well-known GEM5 simulator, that the COLAB scheduler outperforms state-of-the-art WASH and Linux CFS schedulers by up to 21\% and 25\%, respectively, in terms of turnaround time (5\% and 11\% on the average). We also demonstrate improvements of 6\% and 15\% in terms of system throughput on the average. This demonstrates the applicability of our approach in realistic scenarios, allowing better execution times for parallel workloads on AMP processors without additional effort from the programmer.
+
+\ty{This work is extended from the previous work published in CGO 2020~\cite{teng_colab_cgo2020}.}
