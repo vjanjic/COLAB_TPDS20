@@ -1,19 +1,29 @@
 \section{System Overview}
-In this section we analyze the performance impact of multiple runtime performance factors and their relationship with different scheduler components. We then build a scheduler which addresses these performance problems in a coordinated way.
+We provide a high level COLAB system overview as shown in Figure~\ref{figure:f1}. The system is divided by an runtime scheduling process and an offline modelling processes. The runtime scheduler is built inside OS kernel and composed by a core allocator to handle fairness and core sensitivity, a thread selector to achieve bottleneck acceleration and machine learning based runtime models, which predicate speedup and power consumption of threads on heterogeneous cores. The offline modelling processing is applied to construct runtime models by offline training. 
+
+The main novelty of COLAB scheduler is that it can handle multiple runtime factors (core sensitivity, bottleneck acceleration and fairness) in a collaborative way to achieve high system performance and energy efficiency. To easy understand the runtime collaboration, we first analyze the performance impact of multiple runtime factors and their relationship with different scheduler components. We then discuss how to build the scheduler which addresses these performance problems in a coordinated way. After that, we present the detailed design and implementation of the proposed COLAB scheduler, beginning from the supporting offline modelling process to the runtime scheduling process. 
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.5]{figures/overview.png}
+\includegraphics[scale=0.27]{figures/overview.png}
 \caption{System Overview}
 \label{figure:f1}
 \end{figure} 
 
-\subsection{Runtime Factor Analysis}
-Figure~\ref{figure:f1} shows the relationship between runtime performance factors and the scheduler components that address them. In order to achieve runtime collaboration, both the core allocator and the thread selector share information and account for all measured performance factors, including core sensitivity, bottleneck acceleration and fairness,% carefully 
- as illustrated below:
+\begin{figure}
+\centering
+\includegraphics[scale=0.4]{figures/mfa.pdf}
+\caption{A diagram of Performance Factors and Relationships with Scheduling Functions}
+\label{figure:f11}
+\end{figure} 
+
+\section{Runtime Analysis}
+Figure~\ref{figure:f11} shows the relationship between runtime performance factors and the scheduler components that address them. 
+In order to achieve runtime collaboration, both the core allocator and the thread selector share information and account for all measured performance factors, including core sensitivity, bottleneck acceleration and fairness. In this section, we first analyse the relationships and then discuss the collaboration. 
+% as illustrated below:
 %We describe them below by discussing each element. 
 %\begin{itemize}
-
+\subsection{Runtime Factors Analysis}
 \textbf{\textit{Core Allocator:}}
 AMP-aware Core allocators are mainly directed by the core sensitivity factor -- migrating a high speedup thread (with a large differential between big and little core execution time) from  a little core to execute on a big core will generally provide more benefit than migrating a low speedup thread. 
 However this heuristic is overly simplistic. Issues are revealed when the bottleneck factor is considered simultaneously on multiprogrammed workloads. Previous approaches \cite{jibaja2016portable} simply combine the calculation from  bottleneck acceleration and predicted speedup together, but this can result in suboptimal scheduling decisions -- both locking threads and high speedup threads may be accumulating in the runqueues of big cores as described in the motivating example. More intelligent core allocation decisions can be made by avoiding a simple combination of bottleneck acceleration and speedup -- the overall schedule can benefit from a more collaborative execution environment where big cores focus on high speedup bottleneck threads, and little cores handle other low speedup bottlenecked threads without additional migration.
@@ -48,7 +58,13 @@ Problems occur when targeting multi-threaded multi-programmed workloads. Simply 
 \label{figure:f2}
 \end{figure} 
 
-\subsection{Collaboration}
+\begin{figure*}
+\centering
+\includegraphics[scale=0.25]{figures/arm_model.pdf}
+\caption{ARMv8 Performance and Energy Modelling}
+\label{arm_model}
+\end{figure*}
+\subsection{Runtime Collaboration}
 To address the problems detailed above, we designed a coordinated multi-factor scheduler in which the core allocator and the thread selector collaborate to achieve high performance and high fairness, when compared to %the state-of-the-art mixed multi-factor evaluator in 
 WASH \cite{jibaja2016portable}.
 % VJ " We mentioned quite a few times already that WASH is state-of-the-art mixed multi-factor thing...
@@ -75,18 +91,28 @@ After the labeling process, fairness, core sensitivity and bottleneck accelerati
 Another important issue handled by the collaborative multi-factor model is to ensure equal-progress of threads as shown in the upper-right corner of Figure~\ref{figure:f2}. Instead of interfering with the priority and decisions of thread selection, we achieve equal progress in threads by our scaled time slice approach, based on the predicted speedup value of threads running on big cores. The slices of threads on big cores are relative shorter than on little cores. The thread selection function is triggered more often to swap executing threads on big cores, which guarantees the relative equal-progress of threads executed on all cores.
 The runtime model periodically extracts the performance counters, which represents the current execution environment of multi-threaded multi-programmed workloads on the AMPs. The model then computes the updated runtime factors, including the predicated speedup value and blocking counts. This information is attached to the threads and reported back to the multi-factor labeler for next round. We present our runtime implementations in the section below. 
 
-\section{Scheduler Design and Implementation on GEM5}
-We first implement our prototype scheduler on the GEM5 simulator. \cite{binkert2011gem5}
+
+
+\section{COLAB Scheduler Design and Implementation}
+%We first implement our prototype scheduler on the GEM5 simulator. \cite{binkert2011gem5}
 %and the Linux kernel v3.16.
 %with the CFS scheduler. 
-\vspace{-1em}
-\subsection{COLAB Runtime Implementations}
-To implement the runtime multi-factor model, we update the main scheduler function \texttt{\_\_sched\_\_schedule()} of the Linux kernel by adding a thread labeling process as described in section 3.2 above. A similar approach is followed by our WASH re-implementation when updating thread affinities.
 
-\textbf{\textit{Machine Learning based Speedup and Energy Prediction:}} 
-Predicting the relative speedup of each thread between different core types is central for any scheduler targeting AMPs. Our prediction uses an offline trained speedup model to estimate speedups online. This is a common approach in previous works \cite{van2013fairness,jibaja2016portable,saez2012leveraging}.
-To construct the training set, we run all applications in single-program mode with two symmetric configurations, using either only little cores or only big cores. We first record all counters of the big cores and the relative speedup between the two configurations. Since the targeting ARM architecture only contains 7 hardware register to support performance monitor units (PMUs), we do not have access to all PMUs simultaneously. We apply Principal Component Analysis (PCA) technique \cite{witten2016data} to select the 6 performance counters with the largest effect on speedup modeling, together with the counter on committed instructions. We then normalize all counters to the number of committed instructions on GEM5 and use linear regression to build the final model. 
-%The selected counters and speedup model targeting the GEM5 is shown in Table \ref{pca_gem5_sp}. 
+In this section, we present the detailed design and implementation of the proposed COLAB scheduler on Linux kernel. We first describe the offline modelling process, followed by the implementation of runtime supporting techniques including futex-based bottleneck identification and speedup-based scale-slice preemption. After that, we present the COLAB scheduling algorithms and discuss the scheduling overhead.  
+
+%\subsection{COLAB Runtime Implementations}
+%To implement the runtime multi-factor model, we update the main scheduler function \texttt{\_\_sched\_\_schedule()} of the Linux kernel by adding a thread labeling process as described above. A similar approach is followed by our WASH re-implementation when updating thread affinities.
+
+\subsection{Offline Performance and Energy Modelling}
+Predicting the relative speedup of each thread between different core types is central for any scheduler targeting AMPs. Our prediction uses a machine learning approach by offline training and online estimation as shown in Figure~\ref{arm_model}. This is a common approach in previous works \cite{van2013fairness,jibaja2016portable,saez2012leveraging}. 
+
+The abstract offline PMU selection process is shown in Fig.~\ref{arm_model}(a). 
+To construct the training set, we run all applications in single-program mode with two symmetric configurations, using either only little cores (4 Cortex-A53) or only big cores (4 Cortex-A73). We first record common performance monitor units (PMUs) used for both Cortex-A73 and Cortex-A53, together with each thread's relative speedup and energy consumption. We ignore the PMUs for which their value keep to be zero, such as \texttt{SW\_INCR} (Instruction architecturally executed, Condition code
+check pass, software increment). 
+
+Since the targeting ARMv8 architecture only contains 7 hardware register to support PMUs, we do not have access to all PMUs simultaneously. We apply Principal Component Analysis (PCA) technique \cite{witten2016data} to select a 6-PMU-combination with the largest effect on speedup and power modeling. For example, it is easy to know that the performance and energy will be more dominated by the total data movement than some branch behaviours. As a result, although \texttt{BR\_IMMED\_RETIRED} is a meaningful PMU which counts all immediate branch instructions that are architecturally executed, but it is not selected after the PCA process as there are more important PMUs such as \texttt{L1D\_CACHE\_REFILL} (L1 data cache refill) and \texttt{L2\_CACHE} (L2 data cache access). We then normalize all counters to the number of clock cycles and use linear regression to build the final model. The clock cycle number is stable recorded by a specialized register on the test ARMv8 development board. The trained PMU-based performance and energy models are shown in Table~\ref{arm_model}(b).
+
+We validate the accuracy of our trained models on each benchmark as shown in Fig.~\ref{arm_model}(c). The average error cross all benchmark for the performance model is around 7\% while for the energy model is around 1.5\%.
 
 
 \begin{comment}
@@ -118,6 +144,7 @@ To construct the training set, we run all applications in single-program mode wi
 \end{table}
 \end{comment}
 
+\subsection{Runtime Supporting Techniques}
 \textbf{\textit{Bottleneck Identification:}}
 On modern Linux systems synchronization primitives are almost always implemented using kernel futexes, regardless of the threading library used. Futex-based mechanisms use a single atomic instruction in user space to acquire or release the futex, if it is uncontested. Otherwise, it triggers system calls to forces the thread to sleep or to wake up sleeping threads.
 This gives us a convenient single point for monitoring blocking patterns between threads. We first add code in \texttt{futex\_wait\_queue\_me()} and \texttt{futex\_lock\_pi()}, right before the active thread starts waiting on a futex. We record the current time and store it in the \texttt{task\_struct} of the thread. We then insert code in \texttt{wake\_futex()} and \texttt{wake\_futex\_pi()}, right before the waiting task is woken up by the thread releasing the futex. There we calculate the length of the waiting period and we accumulate it in the \texttt{task\_struct} of the thread releasing the futex. This way we are able to measure the cumulative time each thread has caused other threads to wait. We use this as our metric of thread criticality for the rest of the paper.
@@ -125,10 +152,7 @@ This gives us a convenient single point for monitoring blocking patterns between
 \textbf{\textit {Speedup based Scale-slice Preemption:}} Although we implement our scheduler on Linux kernel by fully re-writing both the core allocator and thread selector, the underlining preemption mechanism of Linux is applying the virtual runtime {\it vruntime} in CFS with red-black tree data structure - whenever a new task is enqueued, a preemption wake-up function is invoked to check whether the new coming task should preempt the current task by computing the difference in vruntime and comparing with a boundary. 
 To achieve equal-progress on AMPs, threads running on different types of cores should have different time slices instead of trying to achieve complete fairness on time. We update the default preemption function \texttt{wakeup\_preempt\_entity()} in Linux. To ensure relative equal progress, we apply our runtime speedup model to update the vruntime of the task by dividing it by the its speedup value if the triggering core is a big core. %The ensures relative equal progress.
 
-
-
-
-\subsection{COLAB Algorithm Implementation}
+\subsection{Scheduling Algorithm Implementation}
 \begin{algorithm}
 \caption{COLAB: Collaborative Multi-factor Scheduler targeting Asymmetric Multicore Processors}
 \label{alg:1}
@@ -177,7 +201,7 @@ To achieve equal-progress on AMPs, threads running on different types of cores s
 
 \noindent
 Our scheduling algorithm (see Alg.~\ref{alg:1}) is implemented by overriding the default task selector \texttt{pick\_next\_task\_fair()} and core allocator \texttt{select\_task\_rq\_fair()} in Linux kernel supported by the runtime factors. %The pseudo-code of our scheduling algorithm is shown in Alg. \ref{alg:1}. 
-In line with standard Linux notation, we use $rq$ and $cur$ to represent runqueue and the current task of a core, respectively. We describe the two main functions followed by a discussion on scheduling overhead:
+In line with standard Linux notation, we use $rq$ and $cur$ to represent runqueue and the current task of a core, respectively. We describe the two main functions followed by a energy-aware extension:
 
 \textbf{\textit{Hierarchical Core Allocator:}}
 When a spawned or woken thread is ready to be executed, the core allocator will be invoked to assign this thread to a core's runqueue. To achieve relative load balancing and consider the influence from the core sensitivity factor, we involve a hierarchical round-robin mechanism \texttt{rr\_allocator\_()}. Indicated by the speedup and blocking labels, threads are allocated to different core groups. Threads with high speedup will be round-robin assigned in big core clusters. Low speedup and low blocking threads will only be assigned in little core clusters. 

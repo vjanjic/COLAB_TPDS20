@@ -37,15 +37,14 @@
 %The OS is Linux v3.16. We cross-compiled the kernel with gcc v5.4.0, while we compiled the benchmarks inside the emulated environment with gcc v4.8.2.
 %We chose to use a simulated environment to make it easier to evaluate our approach on multiple different hardware configurations. While we targeted simulated ARM cores, the underlying general procedure and model can be implemented on any real processor as long as they provide enough hardware performance monitor units (PMU). All hardware counters used by our model are supported by the real ARM Cortex-A57/A53 \cite{ARMA57} PMU.
 
-\textbf{\textit{Experimental Environment:}} We first ran our experiments on GEM5, simulating an ARM big.LITTLE-like architecture. The big cores are similar to out-of-order 2 GHz CortexA57 cores, with a 48 KB L1 instruction cache, 32 KB L1 data cache and 2 MB L2 cache. The little cores are similar to in-order 1.2 GHz CortexA53 ones, with a 32 KB L1 instruction cache, 32 KB L1 data cache and 512 KB L2 cache. We evaluated four distinct hardware configurations: 2B2S, 2B4S, 4B2S, 4B4S, where B denotes big cores and S denoted little cores.
+\textbf{\textit{Experimental Environment:}} We first ran our experiments on GEM5, simulating an ARM big.LITTLE-like architecture. The big cores are similar to out-of-order 2 GHz CortexA57 cores, with a 48 KB L1 instruction cache, 32 KB L1 data cache and 2 MB L2 cache. The little cores are similar to in-order 1.2 GHz CortexA53 ones, with a 32 KB L1 instruction cache, 32 KB L1 data cache and 512 KB L2 cache. We evaluated four distinct hardware configurations on GEM5: 2B2S, 2B4S, 4B2S, 4B4S, where B denotes big cores and S denoted little cores.
 %%Two had balanced numbers of big and little cores, one with two big and two little cores (2B2S) and one with four big and four little ones (4B4S). The other two had different numbers of big and little cores, one with two big and four little cores (2B4S) and one with four big cores and two little cores (4B2S). 
 % VJ : I would get rid of the OS and compiler version...Unless it matters which kernel we are using
 %The OS is Linux v3.16. We cross-compiled the kernel with gcc v5.4.0, while we compiled the benchmarks inside the emulated environment with gcc v4.8.2.
 %We chose to use a simulated environment to make it easier to evaluate our approach on multiple different hardware configurations.
 %While we targeted simulated ARM cores, the underlying general procedure and model can be implemented on any real processor as long as they provide enough hardware performance monitor units (PMU). All hardware counters used by our model are supported by the real ARM Cortex-A57/A53 \cite{ARMA57} PMU.
+We then validate COLAB and its energy-aware extension on a HiHope Hikey 970 development board with 4 Cortex-A73 big cores at 2.36GHz and 4 Cortex-A53 little cores at 1.8GHz. As there is only 4 big cores in total to produce baseline performance, we evaluate four configurations: 1B1S, 1B3S, 2B2S and 3B1S. 
 
-\ty{We validate our scheduler on a HiHope Hikey 970 development board with 4 Cortex-A73 big cores at 2.36GHz and 4 Cortex-A53 little cores at 1.8GHz.
-}
  \begin{table}[htbp]
   \caption{Benchmarks categorization~\cite{bienia08characterization,woo1995splash,southern2016analysis}}
   \center
@@ -111,14 +110,15 @@
     Comp - 3 & lu\_ncb - fmm - water\_spatial - lu\_cb & Computation-intensive & 8\\
     Comp - 4 & fluidanimate - ocean\_cp - lu\_ncb - swaptions & Computation-intensive & 20\\
     \hline
-    \multicolumn{4}{c}{\ty{Large Mixed Multi-programmed Workloads for Real System Validation}}\\
+      \end{tabular}}
+  \scalebox{0.8}{
+  \begin{tabular}{p{1.5cm} |p{4cm} |p{1cm}|| p{1.5cm} |p{7cm} |p{1cm}}
+    \multicolumn{6}{c}{Large Mixed Multi-programmed Workloads for Real System Validation}\\
     \hline
-    Index & Workload Composition & Input Size & Threads \\
+   Index & Workload Composition & Threads & Index & Workload Composition & Threads\\
     \hline
-    Larg - 1\\
-    Larg - 2\\
-    Larg - 3\\
-    Larg - 4\\
+    Large - 1 & radix - ocean\_cp & 5 & Large - 3 & blackscholes - radix - fluidanimate - water\_spatial & 15\\
+    Large - 2 & ferret - swaptions & 24 & Large - 4 & ocean\_cp - ferret - lu\_cb - swaptions & 29\\
     \hline
   \end{tabular}}
 \end{table*}
@@ -143,11 +143,12 @@
 
 \textbf{\textit{Workloads:}} For our workloads we used 15 different benchmarks (Table~\ref{BC}), pulled from PARSEC3.0~\cite{bienia11benchmarking} and SPLASH2~\cite{woo1995splash}.
 %\footnote{Our version of GEM5 cannot simulate all PARSEC3.0 benchmarks on ARM. On top of \emph{canneal} and \emph{raytrace} that other researchers have also failed to build~\cite{endo2014micro,van2013full}. Among the SPLASH2 benchmarks, \emph{cholesky} and \emph{volrend} depended on huge input data files that did not fit on the hard drive image. We could not use \emph{barnes}, \emph{radiosity}, \emph{facesim}, \emph{x264}, \emph{vips} and \emph{streamcluster} because their runtime is prohibitively long even for $simsmall$ inputs.}
-\ty{We use the \emph{simsmall} inputs on GEM5 and \emph{simlarge} or\emph{native} inputs on  HiHope  Hikey  970}. We group the benchmarks based on two criteria: a) synchronization intensity and b) communication vs computation intensity.
+We only use the \emph{simsmall} inputs on GEM5 as it is well-known that the simulation is extremely slow. We group the benchmarks based on two criteria: a) synchronization intensity and b) communication vs computation intensity.
 For each group, we randomly generate workloads with variable numbers of benchmarks and threads. These workloads allow us to investigate the behavior of the three scheduling policies under different extremes.
-\ty{To explore the general case and validate the proposed scheduling with energy-aware extension on a real AMP system, we also randomly generate 10 large workloads with benchmarks from all groups. }
+We then use large mixed workloads with the \emph{simlarge} inputs on  HiHope  Hikey  970 to explore the general  cases and validate COLAB with its energy-aware extension on the real chip with asymmetric multi-core processors.
 Table~\ref{WC} shows the selected workloads. 
-For all of them, the experiment starts from a checkpoint taken after all benchmarks have completed their initialization.
+
+%For all of them, the experiment starts from a checkpoint taken after all benchmarks have completed their initialization.
 
 %Each individual result represents the average over two simulations with different core orders - either big cores first or little cores first. Even small variations in the initial state of the system can have a significant effect on scheduling decisions and thus performance. For the Linux scheduler in particular, the order of starting benchmarks will decide which benchmarks will be initially assigned to big and little cores. By varying the initial state and measuring average runtimes over multiple simulations, we minimize the effect of randomness on our evaluation.
 
@@ -162,7 +163,7 @@ H\_ANTT is better when lower, H\_STP is better when higher. For most figures, we
 
 \textbf{\textit{Schedulers:}}
 We evaluate COLAB by comparing it against the default Linux CFS scheduler~\cite{molnar2007cfs} and a state-of-the-art realistic scheduler based on WASH~\cite{jibaja2016portable}. 
-\ty{Linux CFS is the default scheduler on the GEM5 simulator and ARM GTS is the default scheduler on the development board. They provide fairness while trying to maximize the overall CPU resource utilization.}
+Linux CFS is the default scheduler on the GEM5 simulator and ARM GTS~\cite{jeff2013big} is the default scheduler on the development board. They provide fairness while trying to maximize the overall CPU resource utilization.
 %The original WASH was implemented inside a Java VM to control Java thread affinities.
 %In our re-implementation of WASH, we use the same heuristic but we drive it with a core sensitivity model that fits the simulated system and we use it for controlling all application threads. 
 
@@ -356,35 +357,49 @@ As a result, both COLAB and WASH outperform Linux by more than 10\% on 2-program
 %As a result, both COLAB and WASH outperform Linux by more than 10\% on 2-programmed workloads on turnaround time and COLAB can keep the 10\% performance gain also on 4-programmed workloads, while WASH reduced to only have 5\% performance gain on 4-programmed workloads. As for system throughput, COLAB improves by 23\% and 12\% on 2-programmed and 4-programmed workloads compared to Linux while improves by 5\% and 6\% on 2-programmed and 4-programmed workloads compared to WASH. 
 %\textbf{VJ: This is a bit counterintuitive. Why do we get better results for COLAB scheduler when we have more programs but not when we have more threads in a workload?}
 
+\begin{figure*}
+\centering
+\includegraphics[scale=0.6]{figures/1b1s.pdf}
+\caption{Performance of the Large-1 (radix+ocean\_cp) and the Large-2 (ferret+swaptions) workloads using 1 Cortex-A73 core and 1 Cortex-A53 core. Detailed original results from 10 tests with the same 1b1s configuration are presented to show performance variance of ARM GTS scheduler on the real chip. Lower is better for H\_ANTT and higher is better for H\_STP.}
+\label{1b1s}
+\end{figure*}
+
 \begin{figure}
 \centering
-\includegraphics[scale=0.55]{figures/nprog.pdf}
-\caption{\ty{Performance of large multi-programmed Workloads. All results are normalized to the ARM GTS ones. Lower is better for H\_ANTT and higher is better for H\_STP.}}
-\label{large}
+\includegraphics[scale=0.32]{figures/4core.pdf}
+\caption{Performance of Large-3 (blackscholes + radix + fluidanimate + water\_spatial) and Large-4 (ocean\_cp + ferret + lu\_cb + swaptions) Workloads using different 4-core configurations. All results are normalized to the ARM GTS ones. Lower is better for H\_ANTT and higher is better for H\_STP.}
+\label{4core}
 \end{figure}
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.55]{figures/nprog.pdf}
-\caption{\ty{Performance of large multi-programmed Workloads. All results are normalized to the ARM GTS ones. Lower is better for H\_ANTT and higher is better for H\_STP.}}
-\label{plarge}
-\end{figure}
-
-\begin{figure}
-\centering
-\includegraphics[scale=0.55]{figures/nprog.pdf}
-\caption{\ty{Energy consumption of large multi-programmed Workloads. All results are normalized to the ARM GTS ones. Lower is better for energy.}}
+\includegraphics[scale=0.32]{figures/energy_eva.pdf}
+\caption{Energy consumption of large multi-programmed Workloads using different 4-core configurations. All results are normalized to the ARM GTS ones. Lower is better for energy.}
 \label{elarge}
 \end{figure}
 
-\ty{\subsection{Experiments on HiHope Hikey 970}}
-\ty{In this section, we validate the performance and the energy efficiency of COLAB with energy-aware extension under multi-threaded multi-programmed workloads on the real ARM big.LITTLE architecture using a HiHope Hikey 970 development board. There is only 4 big cores and 4 little cores in total in the chip. Because we need the baseline performance produced by the fully-big-core configuration, we can only experiment under 2B2S configuration on this development board. The each experiment on real board only take several seconds for $simlarge$ inputs, we can test much large workloads on the board compared with simulation. Furthermore, performance for each experiment is variant on real board. Thus we run 10 times for each experiment and report the average, the minimum and the maximum value. We first test the original COLAB scheduler compared with WASH for performance validation. Then we test the energy-aware COLAB extension for both performance and energy consumption. The default scheduler on the HiHope Hikey 970 board is ARM GTS instead of Linux CFS.}
+\subsection{Experiments on HiHope Hikey 970}
+In this section, we validate the performance and the energy efficiency of COLAB with energy-aware extension under large ($simlarge$) mixed multi-threaded multi-programmed workloads on the real ARM big.LITTLE architecture using a HiHope Hikey 970 development board. 
+%There is only 4 big cores and 4 little cores in total in the chip. Because we need the baseline performance produced by the fully-big-core configuration, we can only experiment under 2B2S configuration on this development board. The each experiment on real board only take several seconds for $simlarge$ inputs, we can test much large workloads on the board compared with simulation. 
 
-\ty{Figure~\ref{large} shows the performance for these large workloads scheduled by COLAB and WASH against ARM GTS.}
+\textbf{\textit{Portable performance on large mixed workloads:}}
+Performance variance is significant under the default Linux scheduler (with ARM GTS enable) on the real board compared to checkpoint-based GEM5 simulation. CFS-based ARM GTS scheduler without a core sensitivity aware technique might randomly allocate a high big core speedup thread on either a  big core or a little core.  While WASH and COLAB could make their intelligent decisions if there is a detected high big core speedup thread during runtime. To validate this portable performance, we report performance from 10 tests on two distinct large workloads using a basic 1B1S configuration and then the give the Geo-mean result. 
 
-\ty{Figure~\ref{plarge} shows the performance for these large workloads scheduled by COLAB extension and WASH against ARM GTS.}
+As shown in the left hand side of Figure~\ref{1b1s}, H\_ANTT results on the Large-1 (radix+ocean\_cp) worklaod for ARM GTS are variant significantly from 2.2 (Test5) to 3.1 (Test10). While for both WASH and COLAB, the H\_ANTT results keep between 2.15 and 2.45. Similar with the results for H\_STP. The Large-1 is a representative mixed workload compared by a high core sensitivity program, ocean\_cp and a low core sensitivity program, radix. The actual speedup between big and little core for ocean\_cp is more than 5x as validated in the performance modelling section. So if ARM GTS unfortunately allocates the high big core speedup threads from ocean\_cp onto the little (Test1, Test4, Test5 and Test10) during execution, COLAB will result in a up-to 27\% (Test10) performance gain compared to ARM GTS. In average, COLAB results in 12\% and 14\% performance gain on H\_ANTT and H\_STP compared to ARM GTS, respectively. WASH can also make kinds of intelligent decisions on keeping the high big core speedup threads from ocean\_cp on the big core. But it will also schedule bottleneck threads from radix, which do not have a good speedup, to occupy the limited big core resources. As a result, COLAB can outperform WASH with an average 5\% performance gain in this workload.
 
-\ty{Figure~\ref{elarge} shows the energy consumption results for these large workloads scheduled by COLAB extension and WASH against ARM GTS.}
+While the main problem of WASH appears when the workload is not core sensitivity as shown in the right hand side of Figre~\ref{1b1s}. Large-2 workload is composed by ferret and swaptions, application threads from both of them don't have significant speedup between big cores and little cores. While, ferret is a synchronization-intensive parallel program which means there will be bottleneck threads during runtime. WASH simply schedules these bottleneck threads to accumulate runqueue of the big core, which can not actually achieve acceleration but make additional system overhead. COLAB shows its unique advantage in this case by in-place accelerate the bottleneck threads on local cores. As a result, COLAB achieves a up-to 6\% (2\% in average) performance gain while WASH suffers a up-to 4.5\% (2\% in average) slowdown on H\_ANTT compared to ARM GTS. The difference is larger for H\_STP, where COLAB achieves a up-to 8\% (3\% in average) performance gain while WASH suffers a up-to 5\% (2\% in average) slowdown compared to ARM GTS.
+
+To further validate the performance of COLAB on general cases, we test two larger workloads (Large-3, Large-4) each composed by 4 programs using distinct 4-core configurations (1B3S, 2B2S and 3B1S). The results are shown in Figure~\ref{4core}, where each bar is the average value of multiple tests by a certain configuration. Similar with the results from GEM5 simulation, COLAB shows its best advantage against WASH on limited big core resource (1B3S). When there is only 1 big core, the bottleneck in-place acceleration technique of COLAB make its intelligent decisions and results in a up-to 12\% (Large-3) performance gain on H\_ANTT compared with WASH. When there are more big core resources, both WASH and COLAB show more advantage as there will be more opportunities to accelerate the needed threads on big cores under core sensitivity aware solutions than CFS-based ARM GTS. For example, WASH and COLAB achieve 24\% and 20\% performance gain on H\_ANTT when running Large-4 on 3B1S configuration compared to ARM GTS. WASH even do better than COLAB as the amount of big cores is sufficient to accelerate both the high speedup and bottleneck threads for the given workload. In average, COLAB achieves 5\%-9\% and 3\%-6\% performance gain on H\_ANTT on the large workloads compared to ARM GTS and WASH, respectively. WASH can not outperform ARM GTS on H\_STP in average based on the problematic scheduling decisions on the 1B3S configuration, while COLAB can still keep good performance.
+
+\textbf{\textit{Energy efficiency on large mixed workloads:}}
+%We first test the original COLAB scheduler compared with WASH for performance validation. Then we test the energy-aware COLAB extension for both performance and energy consumption. The default scheduler on the HiHope Hikey 970 board is ARM GTS instead of Linux CFS.
+%Figure~\ref{1b1s} shows the performance for these large workloads scheduled by COLAB and WASH against ARM GTS.
+Figure~\ref{elarge} shows the performance energy consumption results for large workloads scheduled by COLAB extension and WASH against ARM GTS. In Figure~\ref{elarge}, WASH shows up-to 5\%(Large-4) energy cost. When allocating tasks, WASH simply schedules bottleneck threads to the big core, regardless of how much energy they consume. An application might cost more energy when running in the big core. For ARM GTS, it cannot be aware of energy consumption of tasks. So its result is not very stable and in some cases (Large-1 2B2S and Large-2 1B3S), ARM GTS can outperform WASH with nearly 2\%. 
+However, the energy-aware COLAB scheduler takes the advantages of its energy model, uses the predicted energy and allocates each application to proper cores to decrease the consumption. For example, with 1B3S configure, WASH tries to allocate tasks to the big core, which makes the full use of it. But it cost more energy because many tasks are pushed into the run queue of big core. For COLAB, it makes more intelligent decision by considering the energy consumption and schedule those energy-intensive task to little cores in order to reduce the energy consumption.
+
+As shown in Figure-\ref{elarge}, COLAB outperforms ARM GTS and WASH with an average 5\% (up-to 8\%) energy saving in all the large mixed multi-programmed workloads on distinct 4-core based configurations.
+
+%\ty{Figure~\ref{elarge} shows the energy consumption results for these large workloads scheduled by COLAB extension and WASH against ARM GTS.}
 
 %\textbf{\textit{Summary of Experiments:}} Our experiments showed that the state-of-the-art heterogeneous-aware WASH scheduler struggles to make better scheduling decisions that the Linux schedules for synchronization-intensive workloads, computation-intensive workloads, low threads number workloads, high program number workloads, mixed multi-class workloads and limited big cores configurations. Trying to handle both core sensitivity, bottleneck acceleration and fairness through thread affinity alone may lead to too many threads assigned to big cores. Instead, we assign on big cores only threads which run significantly faster on them and we prioritize running bottleneck threads regardless of their thread affinity. This leads to improved turnaround time, higher throughput, and better use of the processor resources compared to both Linux and WASH. In summary from all 312 experiments, COLAB improves turnaround time and system throughput by 11\% and 15\% compared to Linux and by 5\% and 6\% compared to WASH. \vspace{-1em}
 %COLAB improves performance by up to 25\% and 21\% lower trunaround time, 11\% and 5\% on average, compared to Linux CFS and WASH scheduler.
