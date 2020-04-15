@@ -94,21 +94,18 @@ The runtime model periodically extracts the performance counters, which represen
 
 
 \section{COLAB Scheduler Design and Implementation}
-%We first implement our prototype scheduler on the GEM5 simulator. \cite{binkert2011gem5}
-%and the Linux kernel v3.16.
-%with the CFS scheduler. 
-
-In this section, we present the detailed design and implementation of the proposed COLAB scheduler on Linux kernel. We first describe the offline modelling process, followed by the implementation of runtime supporting techniques including futex-based bottleneck identification and speedup-based scale-slice preemption. After that, we present the COLAB scheduling algorithms and discuss the scheduling overhead.  
-
-%\subsection{COLAB Runtime Implementations}
-%To implement the runtime multi-factor model, we update the main scheduler function \texttt{\_\_sched\_\_schedule()} of the Linux kernel by adding a thread labeling process as described above. A similar approach is followed by our WASH re-implementation when updating thread affinities.
+This section explores the design and implementation of COLAB inside the Linux kernel. We describe our performance and energy models, our modifications of the kernel to support COLAB, and finally the scheduling algorithm itself, including its runtime overheads.
 
 \subsection{Offline Performance and Energy Modelling}
-Predicting the relative speedup of each thread between different core types is central for any scheduler targeting AMPs. Our prediction uses a machine learning approach by offline training and online estimation as shown in Figure~\ref{arm_model}. This is a common approach in previous works \cite{van2013fairness,jibaja2016portable,saez2012leveraging}. 
+The decisions of our Core Allocator are primarily driven by core sensitivity. To predict whether a thread is core sensitive or not, we develop a machine learned performance model similar to the ones used in previous works in this area~\cite{van2013fairness,jibaja2016portable,saez2012leveraging}. The model is constructed offline once and is kept purposefully simple, a linear regression model with seven parameters, to minimize the runtime overhead. 
 
-The abstract offline PMU selection process is shown in Fig.~\ref{arm_model}(a). 
-To construct the training set, we run all applications in single-program mode with two symmetric configurations, using either only little cores (4 Cortex-A53) or only big cores (4 Cortex-A73). We first record common performance monitor units (PMUs) used for both Cortex-A73 and Cortex-A53, together with each thread's relative speedup and energy consumption. We ignore the PMUs for which their value keep to be zero, such as \texttt{SW\_INCR} (Instruction architecturally executed, Condition code
-check pass, software increment). 
+%Predicting the relative speedup of each thread between different core types is central for any scheduler targeting AMPs. Our prediction uses a machine learning approach by offline training and online estimation as shown in Figure~\ref{arm_model}. This is a common approach in previous works \cite{van2013fairness,jibaja2016portable,saez2012leveraging}. 
+
+%The abstract offline PMU selection process is shown in Fig.~\ref{arm_model}(a). 
+
+The training data we collect are execution time, energy consumption, and event counts from all performance monitor units (PMU). We run each training application in isolation under two different configurations, first on the little core cluster and then the big core cluster. Since we only have access to seven PMUs at any given moment, we repeatedly execute each application while collecting different PMUs until we have reliable information for all of them.
+
+%To construct the training set, we run all applications in single-program mode with two symmetric configurations, using either only little cores (4 Cortex-A53) or only big cores (4 Cortex-A73). We first record common performance monitor units (PMUs) used for both Cortex-A73 and Cortex-A53, together with each thread's relative speedup and energy consumption. We ignore the PMUs for which their value keep to be zero, such as \texttt{SW\_INCR} (Instruction architecturally executed, Condition code check pass, software increment). 
 
 Since the targeting ARMv8 architecture only contains 7 hardware register to support PMUs, we do not have access to all PMUs simultaneously. We apply Principal Component Analysis (PCA) technique \cite{witten2016data} to select a 6-PMU-combination with the largest effect on speedup and power modeling. For example, it is easy to know that the performance and energy will be more dominated by the total data movement than some branch behaviours. As a result, although \texttt{BR\_IMMED\_RETIRED} is a meaningful PMU which counts all immediate branch instructions that are architecturally executed, but it is not selected after the PCA process as there are more important PMUs such as \texttt{L1D\_CACHE\_REFILL} (L1 data cache refill) and \texttt{L2\_CACHE} (L2 data cache access). We then normalize all counters to the number of clock cycles and use linear regression to build the final model. The clock cycle number is stable recorded by a specialized register on the test ARMv8 development board. The trained PMU-based performance and energy models are shown in Table~\ref{arm_model}(b).
 
