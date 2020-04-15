@@ -187,8 +187,8 @@ Linux CFS is the default scheduler on the GEM5 simulator and ARM GTS~\cite{jeff2
 %\vspace{-1.2em}
 \subsection{Experiments on GEM5}
 %\vspace{-0.3cm}
-In this section, we evaluate the performance of COLAB under multi-threaded multi-programmed workloads on the GEM5 simulator. Overall, our scheduler is able to outperform both the Linux CFS and WASH when there is room for improvement. This is particularly true when we have a limited number of big cores and/or many communication-intensive benchmarks. In such cases, we need to consider \emph{at the same time} both core affinity and thread bottlenecks. COLAB can do that, while CFS and WASH cannot, leading to significant performance improvements. In the rest of this subsection, we examine the behavior of COLAB under four different hardware configurations
-%(2B2S, 2B4S, 4B2S, 4B4S) 
+In this section, we evaluate the performance of the COLAB scheduler for multi-threaded multi-program workloads using the GEM5 simulator. We demonstrate that COLAB outperforms both the Linux CFS and WASH when there is room for improvement. In particular, where there is a limited number of big cores and/or where the workload contains communication-intensive benchmarks, it is beneficial to consider core affinity and thread bottlenecks \emph{at the same time}. In this setting, the advantages of COLAB over Linux CFS and WASH become apparant. In the rest of this subsection, we examine in more detail the behavior of COLAB under four different hardware configurations
+(2B2S, 2B4S, 4B2S, 4B4S) 
 for the five different classes of workloads shown in Table~\ref{WC}.
 
 \begin{figure}
@@ -200,14 +200,14 @@ for the five different classes of workloads shown in Table~\ref{WC}.
 \end{figure} 
 
 \textbf{\textit{Synchronization-intensive vs Synchronization Non-intensive workloads:}}
-The synchronization-intensive group contains workloads where all programs have high synchronization rates. Because of this, we expect them to have a large number of bottleneck threads, so COLAB should be able to schedule them better than CFS and WASH. Conversely, synchronization non-intensive workloads should provide few opportunities for COLAB to improve on CFS and WASH.
+The \emph{synchronization-intensive} workloads comprise benchmarks with high synchronization rates, having a large number of bottleneck threads. We expect that COLAB should be able to schedule them better than CFS and WASH. Conversely, \emph{synchronization non-intensive} workloads should provide fewer opportunities for COLAB to improve on CFS and WASH.
 
-Figure~\ref{sync} show the performance of all three schedulers for each workload class and hardware configuration. The two plots show the 
-average H\_ANTT (top) and the average H\_STP (bottom). The left and right half of each plot contain the results for the synchronization-intensive (\emph{Sync}) and synchronization non-intensive (\emph{N\_Sync}) workload classes, respectively.
-The results agree with our expectations. We observe that COLAB improves the turnaround time of \emph{Sync} workloads by around 15\% and 4\% on average compared to CFS and WASH, respectively. We also see that hardware configurations with low core counts, such as 2B2S, favor COLAB. We reduce turnaround time by up to 20\% over CFS and by up to 16\% over WASH. With fewer cores, the pressure from co-executed applications rises and properly balancing bottleneck acceleration and core sensitivity across multiple programs becomes increasingly difficult. WASH places all bottleneck threads onto the big cores, which results in these threads having to wait for CPU time in busy run queues, ending up with only 3\% of performance improvement over Linux. COLAB handles these bottleneck threads in a more holistic way, improving turnaround time by 20\% and system throughput by 27\%, compared to Linux.
-
-As for \emph{N\_Sync} workloads, there are few bottleneck threads to be accelerated, making scheduling decisions much easier. As a result, both COLAB and WASH perform similarly to Linux, with COLAB improving average turnaround time by 6\% and average system throughput by 12\% compared to Linux.
-An interesting point is that COLAB does significantly better (10\% and 15\% improvement on turnaround time) than WASH and Linux for \emph{N\_Sync} workloads on the 4B2S configuration. In this case, where we have sufficient big core resources without enough critical threads, WASH keeps migrating predicted critical threads on big cores even when there is no actual need. However, COLAB will make intelligent decisions by keeping relatively more threads on little cores, which gives more chance for big cores to always execute the limited \emph{really critical} threads as soon as possible.
+Figure~\ref{sync} shows the performance of all three schedulers for each workload class and hardware configuration. The two plots show the 
+average H\_ANTT (top) and the average H\_STP (bottom). In each plot, we show the results for both the synchronization-intensive (\emph{Sync}, left half) and synchronization non-intensive (\emph{N\_Sync}, right half) classes of workloads.
+The results confirm our expectations. We can observe that COLAB improves the turnaround time of \emph{Sync} workloads by around 15\% and 4\% on average compared to CFS and WASH, respectively. We can also see that hardware configurations with low core counts (e.g.~2B2S) favor COLAB, allowing it to reduce turnaround time by up to 20\% compared to CFS and by up to 16\% compared to WASH. With fewer cores, run queues of cores become longer, requiring careful balancing between bottleneck acceleration and core sensitivity. WASH places all bottleneck threads onto the big cores, making these cores congested and ending up with only 3\% performance improvement over CFS. COLAB handles these bottleneck threads in a more holistic way, improving turnaround time by 20\% and system throughput by 27\%, compared to CFS.
+%
+On the other hand, the \emph{N\_Sync} workloads contain fewer bottleneck threads, making scheduling decisions much easier. As a result of this, both COLAB and WASH perform similarly to CFS, with COLAB improving average turnaround time by 6\% and average system throughput by 12\% compared to CFS.
+An interesting point is that COLAB significantly outperforms (by 10\% and 15\% in turnaround time) WASH and Linux for \emph{N\_Sync} workloads on the 4B2S configuration. In this case, there is not enough critical threads to utilize big cores and WASH keeps needlessly migrating predicted critical threads between big cores. COLAB, on the other hand, makes intelligent decisions by keeping more threads on little cores, giving more more chance to big cores to execute the few \emph{really critical} threads as soon as possible.
 % (PP: Turnaround time is worse for COLAB. Unless we go into details about why turnaround time is worse while throughput is better, saying that we do slightly better is wrong. Also it would be nice for the previous paragraph to identify the specific workloads which are accelerated more and pinpoint what makes COLAB better in this case.) 
 %This also explains why WASH does slightly better than COLAB on 2B4S configuration for these workloads - When there are not enough critical threads to be accelerated, the low big-to-little ratio could guide the WASH to migrate less threads on big cores while COLAB does not sensitive to this ratio. 
 
@@ -220,6 +220,7 @@ An interesting point is that COLAB does significantly better (10\% and 15\% impr
 \label{com}
 \end{figure} 
 
+% VJ: Got to here
 \textbf{\textit{Communication-intensive vs Computation-intensive workloads:}}
 When handling programs with high communication-to-computation ratios, bottleneck threads are likely to arise and accelerating them is critical. This is an ideal scenario for COLAB. On the other hand, workloads with little communication are easier to schedule, so CFS and WASH should do reasonably well, leaving little space for improvement.
 
