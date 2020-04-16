@@ -30,9 +30,9 @@
  \hline
   \multicolumn{3}{c}{Linear predictive energy model}\\
      \hline
-    \multicolumn{3}{c}{2.3116+((-759.5873*A)+(13.9528*B)+}
+    \multicolumn{3}{c}{8.3818+((-2.5524*A)+(-9.5247*B)+}
     \\
-    \multicolumn{3}{c}{(5.9552*C)+(0.5631*D)+(760.8123*E)+(-14.1615*F))/G}\\
+    \multicolumn{3}{c}{(-11.7908*C)+(3.481476*D)+(18.854182*E)+(-4.9607*F))/G}\\
  \hline
   \end{tabular}}
 \end{table}
@@ -47,30 +47,31 @@
 %\ty{We validate the accuracy of our trained models on each benchmark as shown in Fig.~\ref{arm_model}(c). The average error cross all benchmark for the performance model is around 7\% while for the energy model is around 1.5\%.}
 %The range of these errors are within the normal performance and energy variance of the test board, so we can claim that the trained models are accuracy enough to predicate the system behaviours.}
 
-\begin{algorithm}
-\caption{Energy-aware COLAB extension}
+\begin{figure}[!t]
 \label{alg:2}
 \begin{algorithmic}[]
-\STATE \textbf{\_core\_alloctor\_e(thread\_struct\ $t$)}\{
-\STATE \textbf{if} t.high\_hyper
-\STATE \ \ \textbf{return} rr\_allocator\_(big\_cores)
-\STATE \textbf{if} {t.low\_hyper \& t.low\_block}
-\STATE \ \ \textbf{return} rr\_allocator\_(little\_cores)
-\STATE \textbf{else return} rr\_allocator\_(cores) \}
+\STATE \textbf{\_core\_alloctor\_e(thread\_struct\ $t$)}:
+\STATE \ \ \textbf{if} t.high\_hyper
+\STATE \ \ \ \ \textbf{return} rr\_allocator\_(big\_cores)
+\STATE \ \ \textbf{if} {t.low\_hyper \& t.low\_block}
+\STATE \ \ \ \ \textbf{return} rr\_allocator\_(little\_cores)
+\STATE \ \ \textbf{else return} rr\_allocator\_(cores)
 \end{algorithmic}
-\end{algorithm}
+\caption{Energy-aware COLAB Extension Algorithm}
+\end{figure}
 
 \textbf{\textit{Energy-aware Algorithm Extension}}
-The original COLAB scheduler is extended to involve further collaboration to achieve energy-aware extension. Under this extension, a hyper-heuristic of a thread $t$ to guide core allocation is designed as follows:
+Until now, we have only considered how to make scheduling decisions to maximize overall performance. Given the different performance-power characteristics of different cores in an AMP system, scheduling decision can be also used to maximize energy efficiency or to achieve a certain trade-off between performance and energy. So, we extend the original scheduler to consider both optimization targets. We use a hyper-heuristic to guide the core assignment of a thread $t$:
 $$ hyper\_(t) = w_{s}*speedup(t) + w_{e}*energy(t) $$
-Where $w_{s}$ and $w_{e}$ are the trained weights of the speedup factor and energy consumption factor, separately; $energy(t)$ is the energy efficient factor for the thread $t$ between big and little cores. Energy efficient is the ratio of useful work done to the amount of power used as introduced in~\cite{tsirogiannis2010analyzing}. Similar with using linear regression on training PMUs for predicated speedup and energy consumption, this hyper-heuristic is trained by hierarchical regression to obtain the best trade-off between performance gain and energy saving.
+where $w_{s}$ and $w_{e}$ are the trained weights of the speedup factor and energy scaling factor, respectively; $energy(t)$ is the energy scaling factor for the thread $t$ between big and little cores, practically the ratio of consumed energy for the same amount of work between the two core types. We select the weights of this hyper-heuristic using a similar approach as for the performance and energy models. We collect data for our training programs running on the two core types and then use hierarchical regression to obtain the best trade-off between performance gain and energy saving. \fixme{PP: The previous sentence is incorrect. There is not a single trade-off between performance and energy, there is an infinite amount of potential trade-offs. Which trade-off did we target? What are we trying to maximize? What kind of training data did we use?}
 
-The extended energy-efficient core allocator \texttt{rr\_allocator\_e()} for the COLAB scheduling algorithm is presented in Alg.~\ref{alg:2}. Compared with the original version, it uses this hyper-heuristic to replace the speedup-heuristic in \texttt{rr\_allocator\_()}. Similar with mapping high speedup threads on big cores, this trade-off allocation policy is applied to avoid heavy energy consumption on big cores. When the energy-aware extension is enabled, threads labeled by this hyper-heuristic involve both the performance and energy concerns instead of the predicated speedup only. Under this hyper-heuristic, core allocator can provide the energy-aware solutions. It only allocates high speedup and non-energy-intensive threads to big cores, while keeps energy-intensive threads on little cores even they also have some kind of speedup. 
+The extended energy-aware core allocator \texttt{rr\_allocator\_e()} for the COLAB scheduling algorithm is presented in Figure~\ref{alg:2}. The hyper-heuristic essentially replaces the speedup factor in the original \texttt{rr\_allocator\_()}. This allocation policy avoids placing threads on the big cores if their performance does not improve significantly or their energy efficiency deteriorates, instead of considering performance only.
+%When the energy-aware extension is enabled, threads labeled by this hyper-heuristic involve both the performance and energy concerns instead of the predicated speedup only. Under this hyper-heuristic, core allocator can provide the energy-aware solutions. It only allocates high speedup and non-energy-intensive threads to big cores, while keeps energy-intensive threads on little cores even they also have some kind of speedup. 
 
 \subsection{Scheduling Overhead Analysis}
-The overhead of the performance model is small. It is updated only every 10 msec and it requires the evaluation of the linear regression equation for each thread. 
+The overhead of the scheduling algorithms themselves is negligible. Collecting the information needed to make our scheduling decisions has some overhead though. Our performance and energy models require accumulating per task performance event counts from seven PMUs. This means that every time we context switch we have to access these PMUs. Reading each one takes 4 cycles on the Cortex-A53 and 14 cycles on the Cortex-A73. Since we need to read seven units, the worst case overhead is <100 cycles per context switch. The typical time between context switches for a single thread is orders of magnitude more than a hundred cycles, so the cost of reading the PMUs should be negligible too.
 
-To maintain per task runtime counter information, we need to access the hardware PMUs every time we context switch. By using register to read a PMU directly, it takes 4 cycles on the Cortex-A53 and 14 cycles on the Cortex-A73. We need to read 7 PMUs in sequential each time.
+Identifying blocking threads requires instrumentation in the latency-sensitive futex code. Still, the code we added is short and relatively infrequently called, so we were not able to observe any negative effects on performance. \fixme{PP: Have we measured this overhead?}
 
-The rest of scheduling overhead comes from labeling all threads based on predicted speedup and blocking level every 10 msec. This is similar to the scheduling overhead of WASH and is infrequent enough to not affect us.
+Finally, we need to use this information to label all threads as high/low speedup, high/low energy scaling, and high/low blocking. This does requires some processing time but we purposefully kept the model simple, a linear regression with seven parameters. Additionally, labels are updated only once every 10 msec, so the total observed overhead is low. \fixme{PP: Do we have a measurement for this?}
 

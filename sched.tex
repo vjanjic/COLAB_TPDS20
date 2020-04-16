@@ -61,7 +61,7 @@ Problems occur when targeting multi-threaded multi-programmed workloads. Simply 
 \begin{figure*}
 \centering
 \includegraphics[scale=0.25]{figures/arm_model.pdf}
-\caption{ARMv8 Performance and Energy Modelling. \fixme{PP: This looks like a screenshot.}}
+\caption{ARMv8 Performance and Energy Modelling. \fixme{PP: This looks like a screenshot. Also (a) does not communicate much information. In (c) is this actually Energy Consumption (as stated on the y-axis) or Energy Efficiency Scaling between big and little cores (which is what we use later)? If it's energy consumption, for which core?}}
 \label{arm_model}
 \end{figure*}
 \subsection{Runtime Collaboration}
@@ -154,11 +154,10 @@ This means that monitoring the blocking patterns between threads requires instru
 %To achieve equal-progress on AMPs, threads running on different types of cores should have different time slices instead of trying to achieve complete fairness on time. We update the default preemption function \texttt{wakeup\_preempt\_entity()} in Linux. To ensure relative equal progress, we apply our runtime speedup model to update the vruntime of the task by dividing it by the its speedup value if the triggering core is a big core. %The ensures relative equal progress.
 
 \subsection{Scheduling Algorithm Implementation}
-\begin{algorithm}
-\caption{COLAB: Collaborative Multi-factor Scheduler targeting Asymmetric Multicore Processors}
+\begin{figure}[!t]
 \label{alg:1}
 \begin{algorithmic}[]
-\STATE \textbf{\_core\_alloctor\_(thread\_struct\ $t$)}\{
+\STATE \textbf{\_core\_alloctor\_(thread\_struct\ $t$)}:
 %\FOR {$t : ready\_threads$}
 %\IF {t->high\_speedup() \& t->high\_block()}
 %\STATE \textbf{if} foo
@@ -166,24 +165,24 @@ This means that monitoring the blocking patterns between threads requires instru
 %\IF {t.high\_speedup}
 %\RETURN rr\_allocator\_(big\_cores)
 %\ENDIF
-\STATE \textbf{if} t.high\_speedup
-\STATE \ \ \textbf{return} rr\_allocator\_(big\_cores)
-\STATE \textbf{if} {t.low\_speedup \& t.low\_block}
-\STATE \ \ \textbf{return} rr\_allocator\_(little\_cores)
+\STATE \ \ \textbf{if} t.high\_speedup
+\STATE \ \ \ \ \textbf{return} rr\_allocator\_(big\_cores)
+\STATE \ \ \textbf{if} {t.low\_speedup \& t.low\_block}
+\STATE \ \ \ \ \textbf{return} rr\_allocator\_(little\_cores)
 
-\STATE \textbf{else return} rr\_allocator\_(cores) \}
+\STATE \ \ \textbf{else return} rr\_allocator\_(cores)
 \STATE
-\STATE \textbf{\_thread\_selector\_(core\_struct\ $c$)}\{
+\STATE \textbf{\_thread\_selector\_(core\_struct\ $c$)}:
 %\IF {c->cur \& !(preempt_wakeup)}
-\STATE \textbf{if}  !empty(c.rq)
-\STATE \ \ \textbf{return} max\_block\_(c.rq)
-\STATE \textbf{if} !empty(c.sched\_domain.rq)
-\STATE \ \ \textbf{return} max\_block\_(c.sched\_domain.rq)
-\STATE \textbf{if} c.cpu\_mask == big
+\STATE \ \ \textbf{if}  !empty(c.rq)
+\STATE \ \ \ \ \textbf{return} max\_block\_(c.rq)
+\STATE \ \ \textbf{if} !empty(c.sched\_domain.rq)
+\STATE \ \ \ \ \textbf{return} max\_block\_(c.sched\_domain.rq)
+\STATE \ \ \textbf{if} c.cpu\_mask == big
 %\FOR {t : little\_core->cur}
 %\STATE candidates.enqueue(t)
 %\IF {!empty(candidates)}
-\STATE \ \ \textbf{return}  max\_block\_(c.sched\_domain\_little.cur)
+\STATE \ \ \ \ \textbf{return}  max\_block\_(c.sched\_domain\_little.cur)
 %\ENDFOR
 %\ENDIF
 %\FOR {t : other\_little\_core->rq}
@@ -196,25 +195,28 @@ This means that monitoring the blocking patterns between threads requires instru
 %\FOR {t : other\_core->rq}
 %\STATE candidates.enqueue(reversed\_speedup(t))
 %\ENDFOR
-\STATE \textbf{else return} idle \}
+\STATE \ \ \textbf{else return} idle
 \end{algorithmic}
-\end{algorithm}
+\caption{Collaborative Multi-factor Scheduler Algorithm}
+\end{figure}
 
 \noindent
-Our scheduling algorithm (see Alg.~\ref{alg:1}) is implemented by overriding the default task selector \texttt{pick\_next\_task\_fair()} and core allocator \texttt{select\_task\_rq\_fair()} in Linux kernel supported by the runtime factors. %The pseudo-code of our scheduling algorithm is shown in Alg. \ref{alg:1}. 
-In line with standard Linux notation, we use $rq$ and $cur$ to represent runqueue and the current task of a core, respectively. We describe the two main functions followed by a energy-aware extension:
+We implement our scheduling algorithm, shown in Figure~\ref{alg:1}, by overriding the default Linux task selector \texttt{pick\_next\_task\_fair()} and core allocator \texttt{select\_task\_rq\_fair()}.
+In line with standard Linux notation, we use $rq$ and $cur$ to represent runqueue and the current task of a core, respectively. In the following paragraphs, we describe the two main functions as well as an energy-aware extension.
 
 \textbf{\textit{Hierarchical Core Allocator:}}
-When a spawned or woken thread is ready to be executed, the core allocator will be invoked to assign this thread to a core's runqueue. To achieve relative load balancing and consider the influence from the core sensitivity factor, we involve a hierarchical round-robin mechanism \texttt{rr\_allocator\_()}. Indicated by the speedup and blocking labels, threads are allocated to different core groups. Threads with high speedup will be round-robin assigned in big core clusters. Low speedup and low blocking threads will only be assigned in little core clusters. 
-%A technical issue here is we need to distinguish threads which are part of a multi-thread program from from single-thread programs - these single-thread program threads will definitely not block others and may not have a high speedup but we should nevertheless not bind them to little cores. They can be easily detected by the allocator by checking whether there are ready threads whose group pid (t->tgid) equals to any others (line 5). 
-Remaining ready threads (usually with average speedup level and little blocking) will be relatively equally allocated to both core types by \texttt{rr\_allocator\_()}. This final round-robin decision helps to keep both core clusters equally occupied and load balanced. 
+The core allocator's role is to assign newly ready threads to core runqueues. Threads become ready to be executed, either when they are woken or spawned. Our implementation first assigns threads to clusters, the big core or the little core one, based on the speedup and blocking labels selected for each thread at runtime. Threads labeled as high speedup are assigned to big core cluster, while low speedup and low blocking are assigned to the little core cluster. All other ready threads, either low speedup and high blocking or average speedup and low blocking, are assigned to both clusters. Finally, a hierarchical round-robin mechanism \texttt{rr\_allocator\_()} chooses one core within the selected cluster for the thread. This helps keep the system load balanced. 
+
+%When a spawned or woken thread is ready to be executed, the core allocator will be invoked to assign this thread to a core's runqueue. To achieve relative load balancing and consider the influence from the core sensitivity factor, we involve a hierarchical round-robin mechanism \texttt{rr\_allocator\_()}. Indicated by the speedup and blocking labels, threads are allocated to different core groups. Threads with high speedup will be round-robin assigned in big core clusters. Low speedup and low blocking threads will only be assigned in little core clusters. 
+%%A technical issue here is we need to distinguish threads which are part of a multi-thread program from from single-thread programs - these single-thread program threads will definitely not block others and may not have a high speedup but we should nevertheless not bind them to little cores. They can be easily detected by the allocator by checking whether there are ready threads whose group pid (t->tgid) equals to any others (line 5). 
+%Remaining ready threads (usually with average speedup level and little blocking) will be relatively equally allocated to both core types by \texttt{rr\_allocator\_()}. This final round-robin decision helps to keep both core clusters equally occupied and load balanced. 
 
 \textbf{\textit{Biased-global Thread Selector:}}
-The thread selector is based on the principle of accelerating the most critical/blocking thread as soon as possible. The selector always tries to choose a thread from the local runqueue first. When there are no ready threads and migration is beneficial, the core triggers the migration of a candidate thread waiting in another runqueue. The highest blocking thread will be selected.
+The thread selector's primary objective is to accelerate the most critical/blocking threads as soon as possible. The selector always searches for a ready thread from the local runqueue first, preferably a high blocking one. If there are no ready threads and migration is beneficial, the core triggers the migration of a candidate thread waiting in another runqueue. The highest blocking thread will be selected for migration.
 To reduce the overhead of accessing state in other runqueues, we follow the same principle as the default Linux CFS scheduler, returning the best candidate thread from the local core group first.
-Further, we allow a big core to select and preempt a running thread on a little core to accelerate it. Big cores are allowed to go idle only when there is no ready thread left - for instance, we do not allow a little core to preempt a big core's execution. 
+Further, we allow a big core to select and preempt a running thread on a little core to accelerate it. Big cores are allowed to go idle only when there are no ready threads left. The converse, little cores preempting big cores is not allowed. 
 %In summary, the thread selector can still access all other runqueues when necessary, but it is biased to access neighbouring ones first. 
-The equal-progress for achieving fairness is addressed by the scale-slice preemption checker  -- we give each thread a maximum time slice relative to its expected performance on the asymmetric core.
+The equal-progress for achieving fairness is addressed by the scale-slice preemption checker described earlier: we give each thread a maximum time slice according to its expected performance on a little core.
 
 
 
